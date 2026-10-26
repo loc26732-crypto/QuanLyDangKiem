@@ -1,28 +1,37 @@
-# Quản lý đăng kiểm xe tải: Java + SQL Server 2012
+# Quản lý đăng kiểm xe tải – bản web Python + PostgreSQL
 
-Giữ nguyên giao diện web cũ (`static/index.html`), phần chạy phía sau viết bằng Java (JDBC) nối SQL Server 2012.
-Không cần Flask/Python/PostgreSQL nữa.
+Đề 3.3 (xe tải nhẹ) và Đề 3.4 (xe tải nặng). Cùng nghiệp vụ, cùng giao diện với bản Java Swing/SQL Server,
+nhưng chạy như một website: thầy mở link là dùng được, dữ liệu lưu thật trong PostgreSQL, máy của nhóm không cần bật.
 
 ## Cấu trúc
-- `src/model` (LoaiXe, LichHenForm), `src/dao` (câu lệnh SQL), `src/service` (nghiệp vụ, kiểm tra dữ liệu),
-  `src/controller` (nhận /api/... trả JSON), `src/util` (DB, Json), `src/Main.java`
-- `sql/QuanLyDangKiem_SQLServer2012.sql`: tạo CSDL + 7 bảng + danh mục + dữ liệu mẫu
-- `db.properties`: host, port, user, password của SQL Server trên máy bạn
+- `app.py`: Flask. Gồm các tầng dữ liệu, `LichHenService`, `KiemDinhService`, `ThongKeService` (tương ứng các lớp Java cùng tên) và các API `/api/...`.
+- `schema.sql`: 7 bảng (LoaiPhuongTien, ChuXe, PhuongTien, LichHen, TieuChiKiemDinh, PhieuKiemDinh, ChiTietKiemDinh), khóa chính, khóa ngoại, ràng buộc CHECK/UNIQUE,
+  hàm `sp_LapPhieuKiemDinh` (tính phí, ngày hết hạn, lưu phiếu), `fn_luu_lich` và view `vw_LichHen`. Chuyển từ `QuanLyDangKiem.sql` của SQL Server.
+- `seed_demo.sql`: vài lịch hẹn mẫu, nạp một lần khi CSDL còn trống. Đặt biến `SEED_DEMO=0` nếu không muốn.
+- `static/index.html`: giao diện (3 tab cho mỗi đề, xem phiếu, xuất CSV).
 
-## Chạy
-1. Mở SSMS, mở file `sql/QuanLyDangKiem_SQLServer2012.sql`, bấm Execute.
-2. Sửa `db.properties` (user/password SQL Server của bạn).
-3. IntelliJ: File > Open, chọn thư mục này. Có `pom.xml` nên IntelliJ tự tải driver `mssql-jdbc`
-   (nếu không dùng Maven: tải mssql-jdbc-9.4.1.jre11.jar rồi File > Project Structure > Libraries > + > Java).
-4. Chuột phải `src/Main.java` > Run. Trình duyệt tự mở http://localhost:8080.
-   Working directory phải là thư mục gốc project (nơi có db.properties và static/).
+Khi chạy lần đầu, ứng dụng tự tạo bảng và nạp dữ liệu danh mục, không cần chạy SQL bằng tay.
 
-## Nếu không kết nối được
-- SQL Server Configuration Manager: bật TCP/IP, cổng 1433, rồi restart service.
-- SSMS > Server Properties > Security: chọn "SQL Server and Windows Authentication mode"; user `sa` phải được bật và có mật khẩu.
-- Lỗi "TLS10 is not accepted" hoặc "protocol version": do SQL Server 2012 cũ + JDK mới.
-  Dùng driver 9.4.1 (đã đặt trong pom) và cập nhật SQL Server 2012 lên SP4, hoặc mở
-  `<JDK>/conf/security/java.security`, xóa `TLSv1, TLSv1.1` khỏi dòng `jdk.tls.disabledAlgorithms`.
-- Nếu bạn đã có CSDL QuanLyDangKiem từ bản Java Swing cũ: script dùng IF OBJECT_ID nên không ghi đè bảng cũ,
-  nhưng tên cột phải khớp. Nếu lệch, đổi `database=` trong db.properties sang tên mới (vd. QuanLyDangKiem2)
-  và sửa tên trong 2 dòng đầu của script.
+## Cách 1: đưa lên mạng (khuyên dùng, miễn phí)
+1. **Tạo CSDL PostgreSQL miễn phí tại [neon.tech](https://neon.tech):** tạo project, sao chép chuỗi kết nối (dạng `postgresql://user:pass@host/db?sslmode=require`).
+2. **Đưa thư mục này lên GitHub** (một repo mới, chứa đúng các file trong thư mục này).
+3. **Tạo dịch vụ tại [render.com](https://render.com):** New + → Blueprint (hoặc Web Service) → chọn repo.
+   - Build command: `pip install -r requirements.txt`
+   - Start command: `gunicorn app:app --workers 2 --bind 0.0.0.0:$PORT`
+   - Environment: `DATABASE_URL` = chuỗi kết nối ở bước 1.
+4. Chờ deploy xong, Render cấp một địa chỉ dạng `https://quan-ly-dang-kiem.onrender.com`. Gửi link này cho thầy.
+
+Lưu ý: gói miễn phí của Render "ngủ" khi lâu không ai truy cập, lần mở đầu có thể chậm khoảng một phút. Nên mở thử trước khi thầy vào chấm.
+Dịch vụ cụ thể và điều khoản miễn phí có thể thay đổi, bạn kiểm tra lại trên trang của họ. Các nền tảng khác (Railway, Fly.io, Koyeb...) cũng chạy được vì chỉ cần Python và biến `DATABASE_URL`.
+
+## Cách 2: chạy trên máy
+```
+pip install -r requirements.txt
+set DATABASE_URL=postgresql://postgres:matkhau@localhost:5432/dangkiem    (Windows: set, Linux/Mac: export)
+python app.py
+```
+Tạo sẵn CSDL rỗng tên `dangkiem` trong PostgreSQL. Mở http://localhost:8080.
+
+## Kiểm tra nhanh sau khi deploy
+- `/healthz` trả về `ok` nghĩa là web đã nối được CSDL.
+- Đăng ký một lịch hẹn, vào tab Xử lý đăng kiểm lập phiếu, rồi xem lại ở tab Thống kê. Dữ liệu giữ nguyên khi tải lại trang vì đã nằm trong PostgreSQL.
